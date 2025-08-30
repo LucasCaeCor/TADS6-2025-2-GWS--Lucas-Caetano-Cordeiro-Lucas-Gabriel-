@@ -38,6 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <script src="js/scripts.js"></script>
 </head>
 <body>
+    <div class="container auth-form">
+        <h1>Cadastro</h1>
     <form method="POST" enctype="multipart/form-data">
         <input type="text" name="username" placeholder="Username" required>
         <input type="email" name="email" placeholder="Email" required>
@@ -46,5 +48,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         <button type="submit">Cadastrar</button>
     </form>
     <a href="login.php">Já tem conta? Login</a>
+    </div>
 </body>
 </html>

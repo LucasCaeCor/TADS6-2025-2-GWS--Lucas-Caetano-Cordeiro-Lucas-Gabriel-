@@ -181,7 +181,6 @@ document.addEventListener('click', function(event) {
 function filterPosts(category) {
     const posts = document.querySelectorAll('.post');
     const buttons = document.querySelectorAll('.category-btn');
-    const feed = document.getElementById('feed');
     
     // Atualiza botões ativos
     buttons.forEach(btn => {
@@ -228,24 +227,28 @@ function filterPosts(category) {
         message.innerHTML = `<p>Não há posts na categoria "${category}".</p>`;
         feed.appendChild(message);
     }
-}
+} 
 
-function toggleMenu(postId) {
-    const menu = document.getElementById(`menu-${postId}`);
-    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
-}
-
-function toggleCommentMenu(commentId) {
-    const menu = document.getElementById(`comment-menu-${commentId}`);
-    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
-}
-
-// Fecha menus quando clicar fora deles
-document.addEventListener('click', function(e) {
-    if (!e.target.matches('.options-btn')) {
-        const menus = document.querySelectorAll('.options-menu');
-        menus.forEach(menu => {
-            menu.style.display = 'none';
-        });
+function toggleComments(postId) {
+    const commentsContainer = document.getElementById(`comments-container-${postId}`);
+    const toggleBtn = document.querySelector(`.toggle-comments-btn[data-post-id="${postId}"]`);
+    const arrow = toggleBtn.querySelector('.toggle-arrow');
+    
+    if (commentsContainer.style.display === 'none') {
+        commentsContainer.style.display = 'block';
+        arrow.classList.add('expanded');
+    } else {
+        commentsContainer.style.display = 'none';
+        arrow.classList.remove('expanded');
     }
+}
+
+
+// Inicializa todos os containers de comentários como fechados
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.comments-container').forEach(container => {
+        container.style.display = 'none';
+    });
 });
+
+

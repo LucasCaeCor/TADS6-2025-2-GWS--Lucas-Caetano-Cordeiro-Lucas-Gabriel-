@@ -424,85 +424,18 @@ a:hover {
     border: 1px solid #ccc;
     border-radius: 4px;
     z-index: 1000;
+    min-width: 100px;
 }
 
 .options-menu button {
     display: block;
     width: 100%;
-    padding: 8px;
+    padding: 8px 12px;
     border: none;
     background: none;
     text-align: left;
     cursor: pointer;
-}
-
-.options-menu button:hover {
-    background-color: #f0f0f0;
-}
-
-.post-options {
-    position: relative;
-    margin-left: auto;
-}
-
-
-/* Estilos para o filtro de categorias */
-.sidebar {
-    width: 200px;
-    padding: 20px;
-    background-color: #f5f5f5;
-    border-radius: 8px;
-    margin-right: 20px;
-}
-
-.category-btn {
-    display: block;
-    width: 100%;
-    padding: 10px;
-    margin: 5px 0;
-    border: none;
-    background-color: #e0e0e0;
-    border-radius: 4px;
-    cursor: pointer;
-    text-align: left;
-}
-
-.category-btn:hover {
-    background-color: #d0d0d0;
-}
-
-.category-btn.active {
-    background-color: #4CAF50;
-    color: white;
-}
-
-.content-wrapper {
-    display: flex;
-    margin-top: 20px;
-}
-
-.main-content {
-    flex: 1;
-}
-
-/* Estilos para os menus de opções */
-.options-menu {
-    display: none;
-    position: absolute;
-    background-color: white;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    z-index: 1000;
-}
-
-.options-menu button {
-    display: block;
-    width: 100%;
-    padding: 8px;
-    border: none;
-    background: none;
-    text-align: left;
-    cursor: pointer;
+    font-size: 14px;
 }
 
 .options-menu button:hover {
@@ -528,4 +461,150 @@ a:hover {
 .no-posts-message p, .no-posts-filter-message p {
     margin: 0;
     font-size: 16px;
+}
+
+/* Seção de comentários expansível */
+.comments-section {
+    margin-top: 15px;
+    border-top: 1px solid #eee;
+    padding-top: 15px;
+}
+
+.comments-header {
+    margin-bottom: 10px;
+}
+
+.toggle-comments-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #666;
+    font-size: 14px;
+    padding: 5px 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.toggle-comments-btn:hover {
+    color: #333;
+}
+
+.toggle-arrow {
+    font-size: 12px;
+    transition: transform 0.3s ease;
+}
+
+.toggle-arrow.expanded {
+    transform: rotate(180deg);
+}
+
+.comment-count {
+    font-weight: bold;
+    color: #4CAF50;
+}
+
+.comments-container {
+    margin-top: 10px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    border: 1px solid #eee;
+}
+
+.comment {
+    padding: 10px;
+    margin-bottom: 10px;
+    background-color: white;
+    border-radius: 6px;
+    border: 1px solid #eee;
+}
+
+.comment-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+}
+
+.comment-header .profile-photo {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+}
+
+.comment-content {
+    margin-left: 40px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.no-comments {
+    text-align: center;
+    padding: 20px;
+    color: #999;
+    font-style: italic;
+}
+
+.comment-form {
+    margin-top: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.comment-form textarea {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    resize: vertical;
+    min-height: 60px;
+    font-family: inherit;
+}
+
+.comment-form button {
+    align-self: flex-end;
+    padding: 8px 16px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.comment-form button:hover {
+    background-color: #45a049;
+}
+
+/* Post styles */
+.post {
+    background: white;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.post-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.post-header .profile-photo {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+}
+
+.post-content {
+    margin-bottom: 15px;
+    line-height: 1.6;
+}
+
+.post-image {
+    max-width: 100%;
+    border-radius: 8px;
+    margin-bottom: 15px;
 }

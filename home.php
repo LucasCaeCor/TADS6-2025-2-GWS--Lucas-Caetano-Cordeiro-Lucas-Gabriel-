@@ -106,6 +106,10 @@ $has_more = ($total_posts > $limit);
                     <?php 
                     if ($posts->num_rows > 0): 
                         while($post = $posts->fetch_assoc()): 
+                            $post_id = $post['id'];
+                            $comment_sql = "SELECT COUNT(*) as comment_count FROM comments WHERE post_id = $post_id";
+                            $comment_result = $conn->query($comment_sql);
+                            $comment_count = $comment_result->fetch_assoc()['comment_count'];
                     ?>
                         <div class="post" data-post-id="<?php echo $post['id']; ?>" data-category="<?php echo $post['category']; ?>">
                             <div class="post-header">
@@ -130,47 +134,66 @@ $has_more = ($total_posts > $limit);
                                 <img src="<?php echo $post['image']; ?>" alt="Imagem do post" class="post-image">
                             <?php endif; ?>
 
-                            <!-- Comments -->
-                            <div class="comments" id="comments-<?php echo $post['id']; ?>">
-                                <?php
-                                $post_id = $post['id'];
-                                $comment_sql = "SELECT c.id, c.content, c.created_at, u.id as user_id, u.username, u.profile_photo 
-                                                FROM comments c JOIN users u ON c.user_id = u.id 
-                                                WHERE c.post_id = $post_id ORDER BY c.created_at DESC";
-                                $comments = $conn->query($comment_sql);
-                                $is_post_owner = ($post['user_id'] == $_SESSION['user_id']);
-                                while($comment = $comments->fetch_assoc()): 
-                                    $can_delete_comment = ($comment['username'] == $_SESSION['username'] || $is_post_owner);
-                                ?>
-                                    <div class="comment" data-comment-id="<?php echo $comment['id']; ?>">
-                                        <div class="comment-header">
-                                            <img src="<?php echo $comment['profile_photo']; ?>" alt="Foto de perfil" class="profile-photo">
-                                            <div>
-                                                <a href="profile.php?user_id=<?php echo $comment['user_id']; ?>"><strong><?php echo $comment['username']; ?></strong></a>
-                                                <span> - <?php echo $comment['created_at']; ?></span>
-                                            </div>
-                                            <?php if ($can_delete_comment): ?>
-                                                <div class="post-options">
-                                                    <button class="options-btn" onclick="toggleCommentMenu(<?php echo $comment['id']; ?>)">...</button>
-                                                    <div id="comment-menu-<?php echo $comment['id']; ?>" class="options-menu">
-                                                        <?php if ($comment['username'] == $_SESSION['username']): ?>
-                                                            <button onclick="editComment(<?php echo $comment['id']; ?>)">Editar</button>
-                                                        <?php endif; ?>
-                                                        <button onclick="deleteComment(<?php echo $comment['id']; ?>, <?php echo $post['id']; ?>)">Deletar</button>
+                            <!-- Comments Section -->
+                            <div class="comments-section">
+                                <div class="comments-header">
+                                    <button class="toggle-comments-btn" onclick="toggleComments(<?php echo $post['id']; ?>)" data-post-id="<?php echo $post['id']; ?>">
+                                        <span class="comment-count"><?php echo $comment_count; ?></span> comentário(s)
+                                        <span class="toggle-arrow">▼</span>
+                                    </button>
+                                </div>
+                                
+                                <div class="comments-container" id="comments-container-<?php echo $post['id']; ?>" style="display: none;">
+                                    <div class="comments" id="comments-<?php echo $post['id']; ?>">
+                                        <?php
+                                        $comments_sql = "SELECT c.id, c.content, c.created_at, u.id as user_id, u.username, u.profile_photo 
+                                                        FROM comments c JOIN users u ON c.user_id = u.id 
+                                                        WHERE c.post_id = $post_id ORDER BY c.created_at DESC LIMIT 3";
+                                        $comments = $conn->query($comments_sql);
+                                        $is_post_owner = ($post['user_id'] == $_SESSION['user_id']);
+                                        
+                                        if ($comments->num_rows > 0): 
+                                            while($comment = $comments->fetch_assoc()): 
+                                                $can_delete_comment = ($comment['username'] == $_SESSION['username'] || $is_post_owner);
+                                        ?>
+                                            <div class="comment" data-comment-id="<?php echo $comment['id']; ?>">
+                                                <div class="comment-header">
+                                                    <img src="<?php echo $comment['profile_photo']; ?>" alt="Foto de perfil" class="profile-photo">
+                                                    <div>
+                                                        <a href="profile.php?user_id=<?php echo $comment['user_id']; ?>"><strong><?php echo $comment['username']; ?></strong></a>
+                                                        <span> - <?php echo $comment['created_at']; ?></span>
                                                     </div>
+                                                    <?php if ($can_delete_comment): ?>
+                                                        <div class="post-options">
+                                                            <button class="options-btn" onclick="toggleCommentMenu(<?php echo $comment['id']; ?>)">...</button>
+                                                            <div id="comment-menu-<?php echo $comment['id']; ?>" class="options-menu">
+                                                                <?php if ($comment['username'] == $_SESSION['username']): ?>
+                                                                    <button onclick="editComment(<?php echo $comment['id']; ?>)">Editar</button>
+                                                                <?php endif; ?>
+                                                                <button onclick="deleteComment(<?php echo $comment['id']; ?>, <?php echo $post['id']; ?>)">Deletar</button>
+                                                            </div>
+                                                        </div>
+                                                    <?php endif; ?>
                                                 </div>
-                                            <?php endif; ?>
-                                        </div>
-                                        <div class="comment-content" id="comment-content-<?php echo $comment['id']; ?>" data-raw="<?php echo htmlspecialchars($comment['content']); ?>"><?php echo $Parsedown->text($comment['content']); ?></div>
+                                                <div class="comment-content" id="comment-content-<?php echo $comment['id']; ?>" data-raw="<?php echo htmlspecialchars($comment['content']); ?>"><?php echo $Parsedown->text($comment['content']); ?></div>
+                                            </div>
+                                        <?php 
+                                            endwhile; 
+                                        else: 
+                                        ?>
+                                            <div class="no-comments">
+                                                <p>Nenhum comentário ainda.</p>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
-                                <?php endwhile; ?>
+                                    
+                                    <form class="comment-form" onsubmit="addComment(event, <?php echo $post['id']; ?>)">
+                                        <input type="hidden" name="post_id" value="<?php echo $post['id']; ?>">
+                                        <textarea name="comment_content" placeholder="Escreva um comentário... (Suporta Markdown)" required></textarea>
+                                        <button type="submit">Comentar</button>
+                                    </form>
+                                </div>
                             </div>
-
-                            <form class="comment-form" onsubmit="addComment(event, <?php echo $post['id']; ?>)">
-                                <input type="hidden" name="post_id" value="<?php echo $post['id']; ?>">
-                                <textarea name="comment_content" placeholder="Escreva um comentário... (Suporta Markdown)" required></textarea>
-                                <button type="submit">Comentar</button>
-                            </form>
                         </div>
                     <?php 
                         endwhile; 
