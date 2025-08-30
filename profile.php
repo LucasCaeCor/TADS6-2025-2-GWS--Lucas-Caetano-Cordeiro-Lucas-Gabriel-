@@ -41,7 +41,8 @@ $user_posts = $conn->query($post_sql);
 <head>
     <meta charset="UTF-8">
     <title>Perfil de <?php echo $user['username']; ?></title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="js/scripts.js"></script>
 </head>
 <body>
     <div class="container">

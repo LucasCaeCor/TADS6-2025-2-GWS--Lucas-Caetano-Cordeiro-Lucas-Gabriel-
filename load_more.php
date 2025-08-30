@@ -1,25 +1,34 @@
 <?php
-// Updated load_more.php - Adjusted for dropdown, post owner delete comments, etc.
+// Updated load_more.php - Added category filter support, Markdown rendering
 include 'db.php';
+require 'lib/Parsedown.php';
 session_start();
+
+$Parsedown = new Parsedown();
+$Parsedown->setSafeMode(true);
 
 if (isset($_GET['page'])) {
     $page = intval($_GET['page']);
     $limit = 5;
     $offset = ($page - 1) * $limit;
 
-    $sql = "SELECT p.id, p.content, p.image, p.created_at, u.id as user_id, u.username, u.profile_photo 
-            FROM posts p JOIN users u ON p.user_id = u.id 
-            ORDER BY p.created_at DESC LIMIT $limit OFFSET $offset";
+    $category = isset($_GET['category']) ? $conn->real_escape_string($_GET['category']) : null;
+    $sql = "SELECT p.id, p.content, p.image, p.category, p.created_at, u.id as user_id, u.username, u.profile_photo 
+            FROM posts p JOIN users u ON p.user_id = u.id";
+    if ($category) {
+        $sql .= " WHERE p.category = '$category'";
+    }
+    $sql .= " ORDER BY p.created_at DESC LIMIT $limit OFFSET $offset";
     $posts = $conn->query($sql);
 
     while($post = $posts->fetch_assoc()) {
-        echo '<div class="post" data-post-id="' . $post['id'] . '">';
+        echo '<div class="post" data-post-id="' . $post['id'] . '" data-category="' . $post['category'] . '">';
         echo '<div class="post-header">';
         echo '<img src="' . $post['profile_photo'] . '" alt="Foto de perfil" class="profile-photo">';
         echo '<div>';
         echo '<a href="profile.php?user_id=' . $post['user_id'] . '"><strong>' . $post['username'] . '</strong></a>';
         echo '<span> - ' . $post['created_at'] . '</span>';
+        echo '<p><small>Categoria: ' . $post['category'] . '</small></p>';
         echo '</div>';
         if ($post['username'] == $_SESSION['username']) {
             echo '<div class="post-options">';
@@ -31,9 +40,9 @@ if (isset($_GET['page'])) {
             echo '</div>';
         }
         echo '</div>';
-        echo '<p id="post-content-' . $post['id'] . '">' . $post['content'] . '</p>';
+        echo '<div class="post-content" id="post-content-' . $post['id'] . '" data-raw="' . htmlspecialchars($post['content']) . '">' . $Parsedown->text($post['content']) . '</div>';
         if ($post['image']) {
-            echo '<img src="' . $post['image'] . '" alt="Imagem do post" class="post-content">';
+            echo '<img src="' . $post['image'] . '" alt="Imagem do post" class="post-image">';
         }
 
         // Comments
@@ -65,7 +74,7 @@ if (isset($_GET['page'])) {
                 echo '</div>';
             }
             echo '</div>';
-            echo '<p id="comment-content-' . $comment['id'] . '">' . $comment['content'] . '</p>';
+            echo '<div class="comment-content" id="comment-content-' . $comment['id'] . '" data-raw="' . htmlspecialchars($comment['content']) . '">' . $Parsedown->text($comment['content']) . '</div>';
             echo '</div>';
         }
         echo '</div>';
@@ -73,7 +82,7 @@ if (isset($_GET['page'])) {
         // Comment form
         echo '<form class="comment-form" onsubmit="addComment(event, ' . $post['id'] . ')">';
         echo '<input type="hidden" name="post_id" value="' . $post['id'] . '">';
-        echo '<textarea name="comment_content" placeholder="Escreva um comentário..." required></textarea>';
+        echo '<textarea name="comment_content" placeholder="Escreva um comentário... (Suporta Markdown)" required></textarea>';
         echo '<button type="submit">Comentar</button>';
         echo '</form>';
 
@@ -82,6 +91,9 @@ if (isset($_GET['page'])) {
 
     $next_offset = $offset + $limit;
     $total_sql = "SELECT COUNT(*) as total FROM posts";
+    if ($category) {
+        $total_sql .= " WHERE category = '$category'";
+    }
     $total_result = $conn->query($total_sql);
     $total_posts = $total_result->fetch_assoc()['total'];
     if ($next_offset >= $total_posts) {
