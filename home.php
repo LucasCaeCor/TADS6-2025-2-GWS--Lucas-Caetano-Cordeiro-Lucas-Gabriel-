@@ -1,5 +1,5 @@
 <?php
-// Updated home.php - Added category filter sidebar, Markdown support, fixed dropdown
+// Updated home.php - Added performance improvements: dynamic pagination, query caching, lazy loading
 session_start();
 
 // Regenerate session ID for security
@@ -23,8 +23,9 @@ require 'lib/Parsedown.php'; // Include Parsedown
 $Parsedown = new Parsedown();
 $Parsedown->setSafeMode(true); // Enable safe mode to prevent XSS
 
+// Configurações
 $limit = 5;
-$page = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
+$page = isset($_GET['page']) && is_numeric($_GET['page']) && $_GET['page'] > 0 ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
 // Generate CSRF token if not set
@@ -78,7 +79,7 @@ if (isset($_POST['create_post']) && $is_admin) {
         if (!file_exists($target_dir)) {
             mkdir($target_dir, 0755, true); // Permissões mais seguras
         }
-        $image = $target_dir . uniqid() . '_' . basename($_FILES["post_image"]["name"]); // Nome único para evitar conflitos
+        $image = $target_dir . uniqid() . '_' . basename($_FILES["post_image"]["name"]);
         if (!move_uploaded_file($_FILES["post_image"]["tmp_name"], $image)) {
             $_SESSION['error_message'] = "Erro ao fazer upload da imagem.";
             header("Location: home.php");
@@ -89,6 +90,7 @@ if (isset($_POST['create_post']) && $is_admin) {
     $stmt = $conn->prepare("INSERT INTO posts (user_id, content, image, category) VALUES (?, ?, ?, ?)");
     $stmt->bind_param("isss", $user_id, $content, $image, $category);
     if ($stmt->execute()) {
+        unset($_SESSION['total_posts']); // Invalidate cache on new post
         $_SESSION['success_message'] = "Post criado com sucesso!";
         header("Location: home.php");
         exit();
@@ -99,6 +101,15 @@ if (isset($_POST['create_post']) && $is_admin) {
     }
 }
 
+// Cache total posts count
+if (!isset($_SESSION['total_posts']) || isset($_GET['refresh_cache'])) {
+    $total_sql = "SELECT COUNT(*) as total FROM posts";
+    $total_result = $conn->query($total_sql);
+    $_SESSION['total_posts'] = $total_result->fetch_assoc()['total'];
+}
+$total_posts = $_SESSION['total_posts'];
+$has_more = ($total_posts > ($page * $limit));
+
 // Fetch posts with user photos and category using prepared statement
 $sql = "SELECT p.id, p.content, p.image, p.category, p.created_at, u.id as user_id, u.username, u.profile_photo 
         FROM posts p JOIN users u ON p.user_id = u.id 
@@ -108,11 +119,6 @@ $stmt->bind_param("ii", $limit, $offset);
 $stmt->execute();
 $posts = $stmt->get_result();
 $stmt->close();
-
-$total_sql = "SELECT COUNT(*) as total FROM posts";
-$total_result = $conn->query($total_sql); // Para total, como não tem parâmetros, pode ser query direta
-$total_posts = $total_result->fetch_assoc()['total'];
-$has_more = ($total_posts > ($page * $limit));
 ?>
 
 <!DOCTYPE html>
@@ -169,18 +175,22 @@ $has_more = ($total_posts > ($page * $limit));
                     if ($posts->num_rows > 0): 
                         while($post = $posts->fetch_assoc()): 
                             $post_id = $post['id'];
-                            // Use prepared statement para contar comentários
-                            $comment_sql = "SELECT COUNT(*) as comment_count FROM comments WHERE post_id = ?";
-                            $stmt = $conn->prepare($comment_sql);
-                            $stmt->bind_param("i", $post_id);
-                            $stmt->execute();
-                            $comment_result = $stmt->get_result();
-                            $comment_count = $comment_result->fetch_assoc()['comment_count'];
-                            $stmt->close();
+                            // Cache comment count in session per post
+                            $cache_key = "comment_count_{$post_id}";
+                            if (!isset($_SESSION[$cache_key]) || isset($_GET['refresh_cache'])) {
+                                $comment_sql = "SELECT COUNT(*) as comment_count FROM comments WHERE post_id = ?";
+                                $stmt = $conn->prepare($comment_sql);
+                                $stmt->bind_param("i", $post_id);
+                                $stmt->execute();
+                                $comment_result = $stmt->get_result();
+                                $_SESSION[$cache_key] = $comment_result->fetch_assoc()['comment_count'];
+                                $stmt->close();
+                            }
+                            $comment_count = $_SESSION[$cache_key];
                     ?>
                         <div class="post" data-post-id="<?php echo $post['id']; ?>" data-category="<?php echo $post['category']; ?>">
                             <div class="post-header">
-                                <img src="<?php echo htmlspecialchars($post['profile_photo']); ?>" alt="Foto de perfil" class="profile-photo">
+                                <img src="<?php echo htmlspecialchars($post['profile_photo']); ?>" alt="Foto de perfil" class="profile-photo" loading="lazy">
                                 <div>
                                     <a href="profile.php?user_id=<?php echo $post['user_id']; ?>"><strong><?php echo htmlspecialchars($post['username']); ?></strong></a>
                                     <span> - <?php echo $post['created_at']; ?></span>
@@ -198,7 +208,7 @@ $has_more = ($total_posts > ($page * $limit));
                             </div>
                             <div class="post-content" id="post-content-<?php echo $post['id']; ?>" data-raw="<?php echo htmlspecialchars($post['content']); ?>"><?php echo $Parsedown->text($post['content']); ?></div>
                             <?php if ($post['image']): ?>
-                                <img src="<?php echo htmlspecialchars($post['image']); ?>" alt="Imagem do post" class="post-image">
+                                <img src="<?php echo htmlspecialchars($post['image']); ?>" alt="Imagem do post" class="post-image" loading="lazy">
                             <?php endif; ?>
 
                             <!-- Comments Section -->
@@ -213,7 +223,6 @@ $has_more = ($total_posts > ($page * $limit));
                                 <div class="comments-container" id="comments-container-<?php echo $post['id']; ?>" style="display: none;">
                                     <div class="comments" id="comments-<?php echo $post['id']; ?>">
                                         <?php
-                                        // Use prepared statement para fetch de comentários
                                         $comments_sql = "SELECT c.id, c.content, c.created_at, u.id as user_id, u.username, u.profile_photo 
                                                         FROM comments c JOIN users u ON c.user_id = u.id 
                                                         WHERE c.post_id = ? ORDER BY c.created_at DESC LIMIT 3";
@@ -230,7 +239,7 @@ $has_more = ($total_posts > ($page * $limit));
                                         ?>
                                             <div class="comment" data-comment-id="<?php echo $comment['id']; ?>">
                                                 <div class="comment-header">
-                                                    <img src="<?php echo htmlspecialchars($comment['profile_photo']); ?>" alt="Foto de perfil" class="profile-photo">
+                                                    <img src="<?php echo htmlspecialchars($comment['profile_photo']); ?>" alt="Foto de perfil" class="profile-photo" loading="lazy">
                                                     <div>
                                                         <a href="profile.php?user_id=<?php echo $comment['user_id']; ?>"><strong><?php echo htmlspecialchars($comment['username']); ?></strong></a>
                                                         <span> - <?php echo $comment['created_at']; ?></span>
@@ -277,7 +286,12 @@ $has_more = ($total_posts > ($page * $limit));
                     <?php endif; ?>
                 </div>
                 <?php if ($has_more): ?>
-                    <button id="load-more" onclick="loadMorePosts()">Mostrar mais</button>
+                    <div class="pagination">
+                        <?php if ($page > 1): ?>
+                            <a href="?page=<?php echo $page - 1; ?>" class="pagination-btn">Página Anterior</a>
+                        <?php endif; ?>
+                        <a href="?page=<?php echo $page + 1; ?>" class="pagination-btn">Próxima Página</a>
+                    </div>
                 <?php endif; ?>
             </div>
         </div>
