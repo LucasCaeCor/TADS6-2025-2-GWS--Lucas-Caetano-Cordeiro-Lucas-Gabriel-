@@ -1,10 +1,22 @@
 <?php
 // Updated home.php - Added category filter sidebar, Markdown support, fixed dropdown
 session_start();
+
+// Regenerate session ID for security
+session_regenerate_id(true);
+
+// Check session integrity (e.g., IP address)
+if (!isset($_SESSION['user_ip']) || $_SESSION['user_ip'] !== $_SERVER['REMOTE_ADDR']) {
+    session_destroy();
+    header("Location: login.php");
+    exit();
+}
+
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
+
 include 'db.php';
 require 'lib/Parsedown.php'; // Include Parsedown
 
@@ -12,53 +24,95 @@ $Parsedown = new Parsedown();
 $Parsedown->setSafeMode(true); // Enable safe mode to prevent XSS
 
 $limit = 5;
-$page = 1;
+$page = isset($_GET['page']) && is_numeric($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $limit;
 
-// Verificar se o usuário é admin
+// Generate CSRF token if not set
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+// Verificar se o usuário é admin usando prepared statement
 $is_admin = false;
-$user_sql = "SELECT is_admin FROM users WHERE id = " . $_SESSION['user_id'];
-$user_result = $conn->query($user_sql);
+$user_sql = "SELECT is_admin FROM users WHERE id = ?";
+$stmt = $conn->prepare($user_sql);
+$stmt->bind_param("i", $_SESSION['user_id']);
+$stmt->execute();
+$user_result = $stmt->get_result();
 if ($user_result->num_rows > 0) {
     $is_admin = $user_result->fetch_assoc()['is_admin'] == 1;
 }
+$stmt->close();
 
 // Create post (only for admin)
 if (isset($_POST['create_post']) && $is_admin) {
-    $content = $_POST['content'];
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $_SESSION['error_message'] = "Token CSRF inválido.";
+        header("Location: home.php");
+        exit();
+    }
+
+    $content = filter_var($_POST['content'], FILTER_SANITIZE_STRING);
     $category = $_POST['category'];
     $user_id = $_SESSION['user_id'];
 
+    // Validar categoria
+    $valid_categories = ['Receitas Doces', 'Receitas Salgadas', 'Dicas de Cozinha', 'Receitas Veganas'];
+    if (!in_array($category, $valid_categories)) {
+        $_SESSION['error_message'] = "Categoria inválida.";
+        header("Location: home.php");
+        exit();
+    }
+
     $image = NULL;
     if (isset($_FILES['post_image']) && $_FILES['post_image']['error'] == 0) {
+        $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+        $max_size = 5 * 1024 * 1024; // 5MB
+        if (!in_array($_FILES['post_image']['type'], $allowed_types) || $_FILES['post_image']['size'] > $max_size) {
+            $_SESSION['error_message'] = "Arquivo inválido ou muito grande.";
+            header("Location: home.php");
+            exit();
+        }
+
         $target_dir = "Uploads/";
         if (!file_exists($target_dir)) {
-            mkdir($target_dir, 0777, true);
+            mkdir($target_dir, 0755, true); // Permissões mais seguras
         }
-        $image = $target_dir . basename($_FILES["post_image"]["name"]);
-        move_uploaded_file($_FILES["post_image"]["tmp_name"], $image);
+        $image = $target_dir . uniqid() . '_' . basename($_FILES["post_image"]["name"]); // Nome único para evitar conflitos
+        if (!move_uploaded_file($_FILES["post_image"]["tmp_name"], $image)) {
+            $_SESSION['error_message'] = "Erro ao fazer upload da imagem.";
+            header("Location: home.php");
+            exit();
+        }
     }
 
     $stmt = $conn->prepare("INSERT INTO posts (user_id, content, image, category) VALUES (?, ?, ?, ?)");
     $stmt->bind_param("isss", $user_id, $content, $image, $category);
     if ($stmt->execute()) {
+        $_SESSION['success_message'] = "Post criado com sucesso!";
         header("Location: home.php");
         exit();
     } else {
-        echo "Error: " . $stmt->error;
+        $_SESSION['error_message'] = "Error: " . $stmt->error;
+        header("Location: home.php");
+        exit();
     }
 }
 
-// Fetch posts with user photos and category
+// Fetch posts with user photos and category using prepared statement
 $sql = "SELECT p.id, p.content, p.image, p.category, p.created_at, u.id as user_id, u.username, u.profile_photo 
         FROM posts p JOIN users u ON p.user_id = u.id 
-        ORDER BY p.created_at DESC LIMIT $limit OFFSET $offset";
-$posts = $conn->query($sql);
+        ORDER BY p.created_at DESC LIMIT ? OFFSET ?";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("ii", $limit, $offset);
+$stmt->execute();
+$posts = $stmt->get_result();
+$stmt->close();
 
 $total_sql = "SELECT COUNT(*) as total FROM posts";
-$total_result = $conn->query($total_sql);
+$total_result = $conn->query($total_sql); // Para total, como não tem parâmetros, pode ser query direta
 $total_posts = $total_result->fetch_assoc()['total'];
-$has_more = ($total_posts > $limit);
+$has_more = ($total_posts > ($page * $limit));
 ?>
 
 <!DOCTYPE html>
@@ -71,8 +125,15 @@ $has_more = ($total_posts > $limit);
 </head>
 <body>
     <div class="container">
-        <h1>Bem-vindo, <?php echo $_SESSION['username']; ?></h1>
+        <h1>Bem-vindo, <?php echo htmlspecialchars($_SESSION['username']); ?></h1>
         <a href="profile.php">Meu Perfil</a> | <a href="logout.php">Sair</a>
+
+        <?php if (isset($_SESSION['success_message'])): ?>
+            <div class="success"><?php echo htmlspecialchars($_SESSION['success_message']); unset($_SESSION['success_message']); ?></div>
+        <?php endif; ?>
+        <?php if (isset($_SESSION['error_message'])): ?>
+            <div class="error"><?php echo htmlspecialchars($_SESSION['error_message']); unset($_SESSION['error_message']); ?></div>
+        <?php endif; ?>
 
         <div class="content-wrapper">
             <div class="sidebar">
@@ -86,6 +147,7 @@ $has_more = ($total_posts > $limit);
             <div class="main-content">
                 <?php if ($is_admin): ?>
                 <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
                     <textarea name="content" placeholder="No que você está pensando? (Suporta Markdown)" required></textarea>
                     <select name="category" required>
                         <option value="" disabled selected>Selecione uma categoria</option>
@@ -107,17 +169,22 @@ $has_more = ($total_posts > $limit);
                     if ($posts->num_rows > 0): 
                         while($post = $posts->fetch_assoc()): 
                             $post_id = $post['id'];
-                            $comment_sql = "SELECT COUNT(*) as comment_count FROM comments WHERE post_id = $post_id";
-                            $comment_result = $conn->query($comment_sql);
+                            // Use prepared statement para contar comentários
+                            $comment_sql = "SELECT COUNT(*) as comment_count FROM comments WHERE post_id = ?";
+                            $stmt = $conn->prepare($comment_sql);
+                            $stmt->bind_param("i", $post_id);
+                            $stmt->execute();
+                            $comment_result = $stmt->get_result();
                             $comment_count = $comment_result->fetch_assoc()['comment_count'];
+                            $stmt->close();
                     ?>
                         <div class="post" data-post-id="<?php echo $post['id']; ?>" data-category="<?php echo $post['category']; ?>">
                             <div class="post-header">
-                                <img src="<?php echo $post['profile_photo']; ?>" alt="Foto de perfil" class="profile-photo">
+                                <img src="<?php echo htmlspecialchars($post['profile_photo']); ?>" alt="Foto de perfil" class="profile-photo">
                                 <div>
-                                    <a href="profile.php?user_id=<?php echo $post['user_id']; ?>"><strong><?php echo $post['username']; ?></strong></a>
+                                    <a href="profile.php?user_id=<?php echo $post['user_id']; ?>"><strong><?php echo htmlspecialchars($post['username']); ?></strong></a>
                                     <span> - <?php echo $post['created_at']; ?></span>
-                                    <p><small>Categoria: <?php echo $post['category']; ?></small></p>
+                                    <p><small>Categoria: <?php echo htmlspecialchars($post['category']); ?></small></p>
                                 </div>
                                 <?php if ($post['username'] == $_SESSION['username']): ?>
                                     <div class="post-options">
@@ -131,7 +198,7 @@ $has_more = ($total_posts > $limit);
                             </div>
                             <div class="post-content" id="post-content-<?php echo $post['id']; ?>" data-raw="<?php echo htmlspecialchars($post['content']); ?>"><?php echo $Parsedown->text($post['content']); ?></div>
                             <?php if ($post['image']): ?>
-                                <img src="<?php echo $post['image']; ?>" alt="Imagem do post" class="post-image">
+                                <img src="<?php echo htmlspecialchars($post['image']); ?>" alt="Imagem do post" class="post-image">
                             <?php endif; ?>
 
                             <!-- Comments Section -->
@@ -146,10 +213,15 @@ $has_more = ($total_posts > $limit);
                                 <div class="comments-container" id="comments-container-<?php echo $post['id']; ?>" style="display: none;">
                                     <div class="comments" id="comments-<?php echo $post['id']; ?>">
                                         <?php
+                                        // Use prepared statement para fetch de comentários
                                         $comments_sql = "SELECT c.id, c.content, c.created_at, u.id as user_id, u.username, u.profile_photo 
                                                         FROM comments c JOIN users u ON c.user_id = u.id 
-                                                        WHERE c.post_id = $post_id ORDER BY c.created_at DESC LIMIT 3";
-                                        $comments = $conn->query($comments_sql);
+                                                        WHERE c.post_id = ? ORDER BY c.created_at DESC LIMIT 3";
+                                        $stmt = $conn->prepare($comments_sql);
+                                        $stmt->bind_param("i", $post_id);
+                                        $stmt->execute();
+                                        $comments = $stmt->get_result();
+                                        $stmt->close();
                                         $is_post_owner = ($post['user_id'] == $_SESSION['user_id']);
                                         
                                         if ($comments->num_rows > 0): 
@@ -158,9 +230,9 @@ $has_more = ($total_posts > $limit);
                                         ?>
                                             <div class="comment" data-comment-id="<?php echo $comment['id']; ?>">
                                                 <div class="comment-header">
-                                                    <img src="<?php echo $comment['profile_photo']; ?>" alt="Foto de perfil" class="profile-photo">
+                                                    <img src="<?php echo htmlspecialchars($comment['profile_photo']); ?>" alt="Foto de perfil" class="profile-photo">
                                                     <div>
-                                                        <a href="profile.php?user_id=<?php echo $comment['user_id']; ?>"><strong><?php echo $comment['username']; ?></strong></a>
+                                                        <a href="profile.php?user_id=<?php echo $comment['user_id']; ?>"><strong><?php echo htmlspecialchars($comment['username']); ?></strong></a>
                                                         <span> - <?php echo $comment['created_at']; ?></span>
                                                     </div>
                                                     <?php if ($can_delete_comment): ?>
@@ -211,7 +283,7 @@ $has_more = ($total_posts > $limit);
         </div>
     </div>
     <script>
-        let currentPage = 1;
+        let currentPage = <?php echo $page; ?>;
         const limit = <?php echo $limit; ?>;
     </script>
 </body>
