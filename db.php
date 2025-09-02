@@ -2,7 +2,7 @@
 // db.php - Database connection file
 $servername = "localhost";
 $username = "root"; // Change to your MySQL username
-$password = ""; // Change to your MySQL password
+$password = "root"; // Change to your MySQL password
 $dbname = "blog_db";
 
 $conn = new mysqli($servername, $username, $password, $dbname);
